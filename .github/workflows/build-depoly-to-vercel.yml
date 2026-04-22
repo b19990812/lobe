@@ -3,7 +3,7 @@ name: Build and Deploy to Vercel
 on:
   push:
     branches:
-      - canary
+      - b19990812-patch1-basemain
   workflow_dispatch:
 
 permissions:
