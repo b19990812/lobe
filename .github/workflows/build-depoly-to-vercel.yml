@@ -1,4 +1,4 @@
-name: Build and Deploy to Vercel
+name: Deploy to Vercel (Prebuilt)
 
 on:
   push:
@@ -6,53 +6,43 @@ on:
       - b19990812-patch1-basemain
   workflow_dispatch:
 
-permissions:
-  contents: read
-  deployments: write
-
-concurrency:
-  group: build-and-deploy-${{ github.ref }}
-  cancel-in-progress: true
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
 jobs:
-  build-and-deploy:
-    name: Build and Deploy to Vercel
+  Deploy-to-Vercel:
     runs-on: ubuntu-latest
-    environment: production
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v6
+      - name: 1. Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Setup Environment
-        uses: ./.github/actions/setup-env
+      - name: 2. Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-      - name: Install Dependencies
-        run: pnpm install
+      - name: 3. Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
-      - name: Build Project
-        run: bun run build:vercel
-        env:
-          NODE_OPTIONS: --max-old-space-size=8192
+      - name: 4. Setup PNPM
+        uses: pnpm/action-setup@v3
+        with:
+          version: latest
 
-      - name: Install Vercel CLI
-        run: pnpm add -g vercel@latest
+      - name: 5. Install dependencies
+        run: pnpm install --frozen-lockfile # 严格锁定版本，生产环境推荐
 
-      - name: Deploy to Vercel Production
-        run: |
-          vercel \
-            --prod \
-            --token=${{ secrets.VERCEL_TOKEN }} \
-            --org=${{ secrets.VERCEL_ORG_ID }} \
-            --project=${{ secrets.VERCEL_PROJECT_ID }}
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-          QSTASH_TOKEN: ${{ secrets.QSTASH_TOKEN }}
-          KEY_VAULTS_SECRET: ${{ secrets.KEY_VAULTS_SECRET }}
-      - name: Deployment Summary
-        if: success()
-        run: |
-          echo "✅ Deployment completed successfully!"
-          echo "🌐 Check deployment status at: https://vercel.com"
+      - name: 6. Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: 7. Pull Vercel Environment
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: 8. Build Project Artifacts
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: 9. Deploy to Vercel
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
