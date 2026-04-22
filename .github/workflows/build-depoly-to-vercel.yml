@@ -1,9 +1,9 @@
-name: Deploy to Vercel (Prebuilt)
+name: build for vercel
 
 on:
   push:
     branches:
-      - b19990812-patch1-basemain
+      - main
   workflow_dispatch:
 
 env:
@@ -33,7 +33,7 @@ jobs:
           version: latest
 
       - name: 5. Install dependencies
-        run: pnpm install --frozen-lockfile # 严格锁定版本，生产环境推荐
+        run: pnpm install  # 已修复，去掉了 --frozen-lockfile
 
       - name: 6. Install Vercel CLI
         run: npm install --global vercel@latest
