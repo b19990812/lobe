@@ -9,17 +9,17 @@ import { AgentBotProviderModel } from '@/database/models/agentBotProvider';
 import type { LobeChatDatabase } from '@/database/type';
 import { getAgentRuntimeRedisClient } from '@/server/modules/AgentRuntime/redis';
 import { KeyVaultsGateKeeper } from '@/server/modules/KeyVaultsEncrypt';
+import { emitAgentSignalSourceEvent } from '@/server/services/agentSignal';
 import { AiAgentService } from '@/server/services/aiAgent';
 
 import { AgentBridgeService } from './AgentBridgeService';
 import {
   type BotPlatformRuntimeContext,
-  type BotProviderConfig,
   buildRuntimeKey,
-  mergeWithDefaults,
   type PlatformClient,
   type PlatformDefinition,
   platformRegistry,
+  resolveBotProviderConfig,
 } from './platforms';
 import { renderError } from './replyTemplate';
 
@@ -224,15 +224,11 @@ export class BotMessageRouter {
     provider: DecryptedBotProvider,
     serverDB: LobeChatDatabase,
   ): Promise<RegisteredBot> {
-    const { agentId, userId, applicationId, credentials } = provider;
+    const { agentId, userId, applicationId } = provider;
     const platform = entry.id;
     const key = buildRuntimeKey(platform, applicationId);
 
-    // Merge schema defaults with user settings (user overrides defaults)
-    const settings = mergeWithDefaults(
-      entry.schema,
-      provider.settings as Record<string, unknown> | undefined,
-    );
+    const { config: providerConfig, settings } = resolveBotProviderConfig(entry, provider);
 
     log(
       'createAndRegisterBot: %s settings merge: userSettings=%j, merged=%j',
@@ -240,13 +236,6 @@ export class BotMessageRouter {
       provider.settings,
       settings,
     );
-
-    const providerConfig: BotProviderConfig = {
-      applicationId,
-      credentials,
-      platform,
-      settings,
-    };
 
     const runtimeContext: BotPlatformRuntimeContext = {
       appUrl: process.env.APP_URL,
@@ -455,6 +444,25 @@ export class BotMessageRouter {
       }
 
       const merged = BotMessageRouter.mergeSkippedMessages(message, context);
+      void emitAgentSignalSourceEvent(
+        {
+          payload: {
+            agentId,
+            applicationId,
+            platform,
+            message: merged.text,
+            platformThreadId: thread.id,
+          },
+          sourceId: merged.id,
+          sourceType: 'bot.message.merged',
+        },
+        {
+          agentId,
+          db: serverDB,
+          userId,
+        },
+        { ignoreError: true },
+      );
 
       log(
         'onNewMention: agent=%s, platform=%s, author=%s, thread=%s, merged=%d, mergedAttachments=%d',
@@ -476,8 +484,7 @@ export class BotMessageRouter {
       } catch (error) {
         log('onNewMention: unhandled error from handleMention: %O', error);
         try {
-          const errMsg = error instanceof Error ? error.message : String(error);
-          await thread.post(renderError(errMsg));
+          await thread.post(renderError());
         } catch {
           // best-effort notification
         }
@@ -531,6 +538,25 @@ export class BotMessageRouter {
       }
 
       const merged = BotMessageRouter.mergeSkippedMessages(message, context);
+      void emitAgentSignalSourceEvent(
+        {
+          payload: {
+            agentId,
+            applicationId,
+            platform,
+            message: merged.text,
+            platformThreadId: thread.id,
+          },
+          sourceId: merged.id,
+          sourceType: 'bot.message.merged',
+        },
+        {
+          agentId,
+          db: serverDB,
+          userId,
+        },
+        { ignoreError: true },
+      );
 
       log(
         'onSubscribedMessage: agent=%s, platform=%s, author=%s, thread=%s, merged=%d, mergedAttachments=%d',
@@ -553,8 +579,7 @@ export class BotMessageRouter {
       } catch (error) {
         log('onSubscribedMessage: unhandled error from handleSubscribedMessage: %O', error);
         try {
-          const errMsg = error instanceof Error ? error.message : String(error);
-          await thread.post(renderError(errMsg));
+          await thread.post(renderError());
         } catch {
           // best-effort notification
         }
@@ -594,6 +619,25 @@ export class BotMessageRouter {
         }
 
         const merged = BotMessageRouter.mergeSkippedMessages(message, context);
+        void emitAgentSignalSourceEvent(
+          {
+            payload: {
+              agentId,
+              applicationId,
+              platform,
+              message: merged.text,
+              platformThreadId: thread.id,
+            },
+            sourceId: merged.id,
+            sourceType: 'bot.message.merged',
+          },
+          {
+            agentId,
+            db: serverDB,
+            userId,
+          },
+          { ignoreError: true },
+        );
 
         log(
           'onNewMessage (%s catch-all): agent=%s, author=%s, thread=%s, text=%s, mergedAttachments=%d',
